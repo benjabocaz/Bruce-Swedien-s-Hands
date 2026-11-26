@@ -55,8 +55,8 @@ private:
     juce::TextButton prevSourceBtn { "<" };
     juce::TextButton nextSourceBtn { ">" };
 
-    juce::Label sourceLbl, workflowLbl, speedLbl, amountLbl, floorLbl, gainLbl, preampLbl;
-    juce::ComboBox sourceBox, workflowBox, speedBox, preampBox;
+    juce::Label sourceLbl, workflowLbl, channelLbl, speedLbl, amountLbl, floorLbl, gainLbl, preampLbl;
+    juce::ComboBox sourceBox, workflowBox, channelBox, speedBox, preampBox;
     juce::Slider amountSlider, floorSlider, gainSlider;
     juce::ToggleButton pocketBtn { "POCKET" };
     juce::ToggleButton rideBtn { "RIDE" };
@@ -65,7 +65,7 @@ private:
     using SliderAtt = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAtt = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
-    std::unique_ptr<ComboAtt> sourceAtt, workflowAtt, speedAtt, preampAtt;
+    std::unique_ptr<ComboAtt> sourceAtt, workflowAtt, channelAtt, speedAtt, preampAtt;
     std::unique_ptr<SliderAtt> amountAtt, floorAtt, gainAtt;
     std::unique_ptr<ButtonAtt> pocketAtt, rideAtt;
 
