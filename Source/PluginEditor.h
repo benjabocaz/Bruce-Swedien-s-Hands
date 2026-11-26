@@ -35,8 +35,8 @@ private:
     BruceSwedienRiderProcessor& audioProcessor;
     HarrisonFaderStrip faderStrip;
 
-    juce::Label sourceLbl, speedLbl, amountLbl, floorLbl, gainLbl, preampLbl;
-    juce::ComboBox sourceBox, speedBox, preampBox;
+    juce::Label sourceLbl, speedLbl, workflowLbl, amountLbl, floorLbl, gainLbl, preampLbl;
+    juce::ComboBox sourceBox, speedBox, workflowBox, preampBox;
     juce::Slider amountSlider, floorSlider, gainSlider;
     juce::ToggleButton pocketBtn { "POCKET" }, rideBtn { "RIDE" };
 
@@ -44,7 +44,7 @@ private:
     using SliderAtt = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ButtonAtt = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
-    std::unique_ptr<ComboAtt> sourceAtt, speedAtt, preampAtt;
+    std::unique_ptr<ComboAtt> sourceAtt, speedAtt, workflowAtt, preampAtt;
     std::unique_ptr<SliderAtt> amountAtt, floorAtt, gainAtt;
     std::unique_ptr<ButtonAtt> pocketAtt, rideAtt;
 
