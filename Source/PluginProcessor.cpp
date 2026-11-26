@@ -29,6 +29,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout BruceSwedienRiderProcessor::
         "workflow", "Mode",
         juce::StringArray { "Tracking", "Mixing" }, 1));
 
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        "channelMode", "Channel Mode",
+        juce::StringArray { "Auto", "Mono", "Stereo" }, 0));
+
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         "amount", "Amount", juce::NormalisableRange<float> (0.0f, 12.0f, 0.1f), 6.0f));
 
@@ -71,7 +75,7 @@ BruceSwedienRiderProcessor::SourceProfile BruceSwedienRiderProcessor::getSourceP
 }
 
 // ============================================================================
-// CAPA 1: SpectralAnalyzer
+// CAPA 1: SpectralAnalyzer (fader consistente en mono y estéreo)
 // ============================================================================
 void BruceSwedienRiderProcessor::SpectralAnalyzer::prepare (double sampleRate)
 {
@@ -105,25 +109,23 @@ BruceSwedienRiderProcessor::SpectralAnalyzer::processSample (float inL, float in
 {
     constexpr float eps = 1.0e-12f;
 
-    const float subL = subLp.processSample (0, inL);
-    const float subR = subLp.processSample (1, inR);
+    // Señal combinada unificada para que el detector del fader responda igual en mono y estéreo
+    const float detSignal = 0.5f * (inL + inR);
 
-    const float bodyL = bodyLp.processSample (0, bodyHp.processSample (0, inL));
-    const float bodyR = bodyLp.processSample (1, bodyHp.processSample (1, inR));
+    const float sub  = subLp.processSample (0, detSignal);
+    const float body = bodyLp.processSample (0, bodyHp.processSample (0, detSignal));
+    const float sib  = sibHp.processSample (0, detSignal);
 
-    const float sibL = sibHp.processSample (0, inL);
-    const float sibR = sibHp.processSample (1, inR);
-
-    const float eSub  = 0.5f * (subL * subL + subR * subR);
-    const float eBody = 0.5f * (bodyL * bodyL + bodyR * bodyR);
-    const float eSib  = 0.5f * (sibL * sibL + sibR * sibR);
+    const float eSub  = sub * sub;
+    const float eBody = body * body;
+    const float eSib  = sib * sib;
 
     // Relación normalizada sibilancia vs (cuerpo + sibilancia)
     const float sibRatio = eSib / (eBody + eSib + eps);
     const float excessSib = std::clamp ((sibRatio - profile.sibThresholdRatio) / std::max (0.05f, 1.0f - profile.sibThresholdRatio), 0.0f, 1.0f);
     const float sibWeight = profile.wSib * (1.0f - profile.sibGuardStrength * excessSib);
 
-    // Energía ponderada percibida: E_perc = w_cuerpo * E_cuerpo + w_grave * E_grave + w_sib * E_sib
+    // Energía ponderada percibida
     const float perceivedEnergy = profile.wBody * eBody + profile.wSub * eSub + sibWeight * eSib;
     const float instDb = std::clamp (10.0f * std::log10 (perceivedEnergy + eps), -80.0f, 6.0f);
 
@@ -137,7 +139,6 @@ BruceSwedienRiderProcessor::SpectralAnalyzer::processSample (float inL, float in
     const float deltaDb = std::abs (instDb - prevInstDb);
     prevInstDb = instDb;
 
-    // Estimación adaptativa del piso de ruido cuando la señal es baja y estable
     if (instDb < userFloorDb + 6.0f && deltaDb < 1.2f)
         noiseFloorEstDb += floorAdaptCoeff * (instDb - noiseFloorEstDb);
 
@@ -201,26 +202,22 @@ float BruceSwedienRiderProcessor::HandMotionEngine::processSample (float effecti
     {
         holdRemaining = holdSamples;
 
-        // Zona muerta musical alrededor del objetivo: evita micro-movimientos nerviosos
         const float rawDelta = targetBalanceDb - effectiveLevelDb;
         const float absDelta = std::abs (rawDelta);
         const float signDelta = (rawDelta >= 0.0f) ? 1.0f : -1.0f;
         const float deadzone = profile.deadzoneDb * (0.85f + 0.30f * trackingMix);
         const float effectiveDelta = signDelta * std::max (0.0f, absDelta - deadzone);
 
-        // Curva no lineal suave con tanh escalada por AMOUNT
         const float kNorm = std::max (2.0f, maxRangeDb * 1.25f);
         targetRideDb = maxRangeDb * std::tanh (effectiveDelta / kNorm);
     }
 
-    // Modelo físico de 2º orden: y'' + 2*zeta*wn*y' + wn^2*(y - y_target) = 0
     static constexpr std::array<float, 5> speedWnHz { 7.5f, 4.4f, 2.4f, 1.25f, 0.65f };
     static constexpr std::array<float, 5> speedZeta { 0.92f, 0.96f, 1.02f, 1.08f, 1.15f };
 
     const size_t sIdx = static_cast<size_t> (std::clamp (speedIdx, 0, 4));
     const bool movingDown = (targetRideDb < currentGainDb);
 
-    // Asimetría: frena/contiene con algo más de firmeza al bajar y sube con suavidad al rescatar frases
     const float wn = juce::MathConstants<float>::twoPi * speedWnHz[sIdx]
                    * profile.stiffnessScale * (movingDown ? 1.18f : 0.85f);
     const float zeta = speedZeta[sIdx] * profile.dampingScale
@@ -231,7 +228,6 @@ float BruceSwedienRiderProcessor::HandMotionEngine::processSample (float effecti
     currentGainDb += velDbPerSec * dt;
     currentGainDb = std::clamp (currentGainDb, -18.0f, 18.0f);
 
-    // POCKET orgánico no repetitivo (3 osciladores inarmónicos lentos de muy baja amplitud)
     float pocketDb = 0.0f;
     if (pocketOn && rideOn && maxRangeDb > 0.05f)
     {
@@ -266,22 +262,22 @@ void BruceSwedienRiderProcessor::ConsolePreampStage::prepare (double sampleRate)
 
 void BruceSwedienRiderProcessor::ConsolePreampStage::configurePreamp (int preampIdx)
 {
-    if (preampIdx == 1) // Harrison 32C: medios-graves firmes y presencia abierta
+    if (preampIdx == 1) // Harrison 32C
     {
         inShelf.setLowShelf (145.0f, 1.3f, 0.7071f);
         outShelf.setHighShelf (7500.0f, 0.7f, 0.7071f);
     }
-    else if (preampIdx == 2) // Neve: transformador con redondeo suave en agudos
+    else if (preampIdx == 2) // Neve
     {
         inShelf.setLowShelf (110.0f, 1.6f, 0.7071f);
         outShelf.setHighShelf (6500.0f, -1.2f, 0.7071f);
     }
-    else if (preampIdx == 3) // API: punch en medios y ataque rápido
+    else if (preampIdx == 3) // API
     {
         inShelf.setLowShelf (180.0f, 0.6f, 0.7071f);
         outShelf.setHighShelf (3200.0f, 1.2f, 0.7071f);
     }
-    else // Clean: sin coloración de consola
+    else // Clean
     {
         inShelf.setLowShelf (120.0f, 0.0f, 0.7071f);
         outShelf.setHighShelf (8000.0f, 0.0f, 0.7071f);
@@ -295,7 +291,6 @@ inline float BruceSwedienRiderProcessor::ConsolePreampStage::applyModel (float x
                                                                       float trackingMix,
                                                                       int ch) noexcept
 {
-    // En modo Clean puro (modelIdx == 0) mantenemos respuesta transparente sin saturación artificial
     if (modelIdx == 0)
         return x;
 
@@ -309,11 +304,11 @@ inline float BruceSwedienRiderProcessor::ConsolePreampStage::applyModel (float x
     float y = x;
     switch (modelIdx)
     {
-        case 1: // Harrison 32C: saturación asimétrica suave y controlada
+        case 1: // Harrison 32C: asimetría suave y calibrada para simetría L/R limpia
         {
             const float g = 1.0f + effDrive * 1.45f;
             const float u = x * g;
-            const float asym = 0.07f * effDrive * (u * u);
+            const float asym = 0.035f * effDrive * (u * u);
             const float raw = std::tanh (u + asym);
             const float norm = 1.0f / std::max (0.55f, std::tanh (g));
             y = raw * norm;
@@ -393,6 +388,9 @@ void BruceSwedienRiderProcessor::prepareToPlay (double sampleRate, int)
     smGainDb   = apvts.getRawParameterValue ("gain")->load();
     smTrackingMix = (apvts.getRawParameterValue ("workflow")->load() < 0.5f) ? 1.0f : 0.0f;
 
+    const int initChanMode = static_cast<int> (apvts.getRawParameterValue ("channelMode")->load());
+    smChannelModeMix = (initChanMode == 1) ? 1.0f : 0.0f;
+
     lastPreampIdx = static_cast<int> (apvts.getRawParameterValue ("preamp")->load());
     prevPreampIdx = lastPreampIdx;
     smPreampCrossfade = 1.0f;
@@ -416,17 +414,23 @@ void BruceSwedienRiderProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 {
     juce::ScopedNoDenormals noDenormals;
 
-    const int numChannels = buffer.getNumChannels();
-    const int numSamples  = buffer.getNumSamples();
-    if (numChannels == 0 || numSamples == 0)
+    const int origNumChannels = buffer.getNumChannels();
+    const int numSamples      = buffer.getNumSamples();
+    if (origNumChannels == 0 || numSamples == 0)
         return;
 
-    if (numChannels == 1)
-        buffer.setSize (2, numSamples, true, false, true);
+    const bool inputWasMono = (origNumChannels == 1);
 
-    const int sourceIdx   = static_cast<int> (apvts.getRawParameterValue ("source")->load());
-    const int speedIdx    = static_cast<int> (apvts.getRawParameterValue ("speed")->load());
-    const int workflowIdx = static_cast<int> (apvts.getRawParameterValue ("workflow")->load()); // 0: Tracking, 1: Mixing
+    if (origNumChannels == 1)
+    {
+        buffer.setSize (2, numSamples, true, true, true);
+        buffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
+    }
+
+    const int sourceIdx      = static_cast<int> (apvts.getRawParameterValue ("source")->load());
+    const int speedIdx       = static_cast<int> (apvts.getRawParameterValue ("speed")->load());
+    const int workflowIdx    = static_cast<int> (apvts.getRawParameterValue ("workflow")->load()); // 0: Tracking, 1: Mixing
+    const int channelModeIdx = static_cast<int> (apvts.getRawParameterValue ("channelMode")->load()); // 0: Auto, 1: Mono, 2: Stereo
     const float targetAmountDb = apvts.getRawParameterValue ("amount")->load();
     const float targetFloorDb  = apvts.getRawParameterValue ("floor")->load();
     const float targetGainDb   = apvts.getRawParameterValue ("gain")->load();
@@ -456,6 +460,10 @@ void BruceSwedienRiderProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float xfadeCoeff = 1.0f - std::exp (-1.0f / (0.035f * srF));
     const float targetTrackingMix = (workflowIdx == 0) ? 1.0f : 0.0f;
 
+    // 0: Auto (sigue inputWasMono), 1: Mono forzado, 2: Stereo forzado
+    const bool wantMono = (channelModeIdx == 1) || (channelModeIdx == 0 && inputWasMono);
+    const float targetMonoMix = wantMono ? 1.0f : 0.0f;
+
     auto* left  = buffer.getWritePointer (0);
     auto* right = buffer.getWritePointer (1);
 
@@ -465,20 +473,20 @@ void BruceSwedienRiderProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     for (int i = 0; i < numSamples; ++i)
     {
-        smAmountDb    += paramCoeff * (targetAmountDb - smAmountDb);
-        smFloorDb     += paramCoeff * (targetFloorDb - smFloorDb);
-        smGainDb      += paramCoeff * (targetGainDb - smGainDb);
-        smTrackingMix += paramCoeff * (targetTrackingMix - smTrackingMix);
+        smAmountDb       += paramCoeff * (targetAmountDb - smAmountDb);
+        smFloorDb        += paramCoeff * (targetFloorDb - smFloorDb);
+        smGainDb         += paramCoeff * (targetGainDb - smGainDb);
+        smTrackingMix    += paramCoeff * (targetTrackingMix - smTrackingMix);
+        smChannelModeMix += paramCoeff * (targetMonoMix - smChannelModeMix);
         smPreampCrossfade = std::min (1.0f, smPreampCrossfade + xfadeCoeff);
 
-        const float inL = left[i];
-        const float inR = right[i];
-        peakIn = std::max ({ peakIn, std::abs (inL), std::abs (inR) });
+        const float rawL = left[i];
+        const float rawR = right[i];
+        peakIn = std::max ({ peakIn, std::abs (rawL), std::abs (rawR) });
 
-        // 1. Análisis espectral multibanda
-        const auto analysis = spectralAnalyzer.processSample (inL, inR, smFloorDb, profile);
+        // El detector lee la señal combinada para mover el fader igual en mono y estéreo
+        const auto analysis = spectralAnalyzer.processSample (rawL, rawR, smFloorDb, profile);
 
-        // 2. Movimiento físico del fader + POCKET
         const float rideWithPocketDb = handMotionEngine.processSample (
             analysis.effectiveLevelDb,
             analysis.noiseFloorEstDb,
@@ -493,16 +501,25 @@ void BruceSwedienRiderProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
         lastRideWithPocket = rideWithPocketDb;
 
-        // 3. Ganancia total + etapa de consola/preamp
+        // El modo de canal decide si la señal de audio/preamp se suma a mono o conserva estéreo
+        const float monoSum = 0.5f * (rawL + rawR);
+        float outL = rawL + smChannelModeMix * (monoSum - rawL);
+        float outR = rawR + smChannelModeMix * (monoSum - rawR);
+
         const float totalGainDb = rideWithPocketDb + smGainDb;
         const float baseDrive = (0.14f + 0.16f * (1.0f - smTrackingMix) + 0.18f * (smAmountDb / 12.0f))
                               * profile.preampDriveScale;
 
-        float outL = inL;
-        float outR = inR;
         preampStage.processStereoSample (outL, outR,
                                          lastPreampIdx, prevPreampIdx, smPreampCrossfade,
                                          totalGainDb, rideWithPocketDb, baseDrive, smTrackingMix);
+
+        if (smChannelModeMix > 0.999f)
+        {
+            const float avgOut = 0.5f * (outL + outR);
+            outL = avgOut;
+            outR = avgOut;
+        }
 
         left[i]  = outL;
         right[i] = outR;
