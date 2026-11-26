@@ -20,20 +20,17 @@ void HarrisonFaderStrip::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
-    // Panel oscuro de consola
     g.setColour (juce::Colour (0xff151210));
     g.fillRoundedRectangle (bounds, 6.0f);
     g.setColour (juce::Colour (0xff4d3f2e));
     g.drawRoundedRectangle (bounds, 6.0f, 1.2f);
 
-    // Zona izquierda: Fader de consola que sube y baja en tiempo real
     auto faderArea = bounds.removeFromLeft (bounds.getWidth() * 0.54f).reduced (10.0f, 14.0f);
 
     g.setColour (juce::Colour (0xffe8c27a));
     g.setFont (juce::Font (juce::FontOptions (10.0f).withStyle ("Bold")));
     g.drawText ("FADER", faderArea.removeFromTop (16.0f), juce::Justification::centred);
 
-    // Escala de dB a la izquierda del carril
     auto scaleArea = faderArea.removeFromLeft (28.0f);
     g.setColour (juce::Colour (0xffb8a78c));
     g.setFont (juce::Font (juce::FontOptions (8.5f).withStyle ("Bold")));
@@ -47,27 +44,22 @@ void HarrisonFaderStrip::paint (juce::Graphics& g)
     }
 
     auto trackArea = faderArea.reduced (14.0f, 6.0f);
-    // Ranura del fader
     g.setColour (juce::Colour (0xff090706));
     g.fillRoundedRectangle (trackArea.getCentreX() - 4.0f, trackArea.getY(), 8.0f, trackArea.getHeight(), 3.0f);
 
-    // Línea de 0 dB
     const float zeroY = trackArea.getCentreY();
     g.setColour (juce::Colour (0xffe8c27a).withAlpha (0.45f));
     g.drawHorizontalLine (static_cast<int> (zeroY), trackArea.getX() - 4.0f, trackArea.getRight() + 4.0f);
 
-    // Posición vertical del fader según displayedRideDb (-12 dB a +12 dB)
     const float clampedRide = std::clamp (displayedRideDb, -12.0f, 12.0f);
-    const float normPos = 0.5f - (clampedRide / 24.0f); // 0.0 arriba (+12 dB), 1.0 abajo (-12 dB)
+    const float normPos = 0.5f - (clampedRide / 24.0f);
     const float capY = trackArea.getY() + normPos * trackArea.getHeight();
 
-    // Barra indicadora entre 0 dB y posición actual del fader
     const float barTop = std::min (zeroY, capY);
     const float barH   = std::abs (capY - zeroY);
     g.setColour ((clampedRide >= 0.0f ? juce::Colour (0xfff2b84b) : juce::Colour (0xffd97848)).withAlpha (0.35f));
     g.fillRect (trackArea.getCentreX() - 3.0f, barTop, 6.0f, barH);
 
-    // Capuchón físico del fader
     juce::Rectangle<float> cap (trackArea.getCentreX() - 20.0f, capY - 12.0f, 40.0f, 24.0f);
     g.setColour (juce::Colours::black.withAlpha (0.65f));
     g.fillRoundedRectangle (cap.translated (0.0f, 2.0f), 3.0f);
@@ -78,7 +70,6 @@ void HarrisonFaderStrip::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xfffaf0dc));
     g.drawHorizontalLine (static_cast<int> (cap.getCentreY()), cap.getX() + 4.0f, cap.getRight() - 4.0f);
 
-    // Zona derecha: Medidor LED ámbar + lectura numérica de ride
     auto meterArea = bounds.reduced (10.0f, 14.0f);
     juce::String rideText = (displayedRideDb >= 0.0f ? "+" : "") + juce::String (displayedRideDb, 1) + " dB";
     g.setColour (juce::Colour (0xfff5c469));
@@ -96,7 +87,6 @@ void HarrisonFaderStrip::paint (juce::Graphics& g)
 
     for (int idx = 0; idx < numLeds; ++idx)
     {
-        // idx 0 arriba, numLeds - 1 abajo
         const int fromBottom = (numLeds - 1) - idx;
         const bool lit = fromBottom < litCount;
         const float y = meterArea.getY() + static_cast<float> (idx) * (ledH + gap);
@@ -117,7 +107,7 @@ void HarrisonFaderStrip::paint (juce::Graphics& g)
 BruceSwedienRiderEditor::BruceSwedienRiderEditor (BruceSwedienRiderProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p), faderStrip (p)
 {
-    setSize (440, 540);
+    setSize (460, 560);
     addAndMakeVisible (faderStrip);
 
     styleCombo (sourceBox, sourceLbl, "SOURCE");
@@ -125,6 +115,9 @@ BruceSwedienRiderEditor::BruceSwedienRiderEditor (BruceSwedienRiderProcessor& p)
         "Vocals", "Vocal Bus", "Bass", "Guitar", "Acoustic / Strings",
         "Drum Bus", "Drum Machine", "Keys", "Synth", "Master Bus"
     }, 1);
+
+    styleCombo (workflowBox, workflowLbl, "MODE");
+    workflowBox.addItemList ({ "Tracking", "Mixing" }, 1);
 
     styleCombo (speedBox, speedLbl, "SPEED");
     speedBox.addItemList ({ "Super Fast", "Fast", "Natural", "Slow", "Super Slow" }, 1);
@@ -140,14 +133,15 @@ BruceSwedienRiderEditor::BruceSwedienRiderEditor (BruceSwedienRiderProcessor& p)
     styleToggle (rideBtn,   juce::Colour (0xfff2b84b));
 
     auto& v = audioProcessor.apvts;
-    sourceAtt = std::make_unique<ComboAtt> (v, "source", sourceBox);
-    speedAtt  = std::make_unique<ComboAtt> (v, "speed", speedBox);
-    preampAtt = std::make_unique<ComboAtt> (v, "preamp", preampBox);
-    amountAtt = std::make_unique<SliderAtt> (v, "amount", amountSlider);
-    floorAtt  = std::make_unique<SliderAtt> (v, "floor", floorSlider);
-    gainAtt   = std::make_unique<SliderAtt> (v, "gain", gainSlider);
-    pocketAtt = std::make_unique<ButtonAtt> (v, "pocket", pocketBtn);
-    rideAtt   = std::make_unique<ButtonAtt> (v, "ride", rideBtn);
+    sourceAtt   = std::make_unique<ComboAtt>  (v, "source", sourceBox);
+    workflowAtt = std::make_unique<ComboAtt>  (v, "workflow", workflowBox);
+    speedAtt    = std::make_unique<ComboAtt>  (v, "speed", speedBox);
+    preampAtt   = std::make_unique<ComboAtt>  (v, "preamp", preampBox);
+    amountAtt   = std::make_unique<SliderAtt> (v, "amount", amountSlider);
+    floorAtt    = std::make_unique<SliderAtt> (v, "floor", floorSlider);
+    gainAtt     = std::make_unique<SliderAtt> (v, "gain", gainSlider);
+    pocketAtt   = std::make_unique<ButtonAtt> (v, "pocket", pocketBtn);
+    rideAtt     = std::make_unique<ButtonAtt> (v, "ride", rideBtn);
 }
 
 void BruceSwedienRiderEditor::styleKnob (juce::Slider& s, juce::Label& lbl, const juce::String& text, juce::Colour accent)
@@ -198,7 +192,6 @@ void BruceSwedienRiderEditor::paint (juce::Graphics& g)
     g.setGradientFill (bg);
     g.fillRect (bounds);
 
-    // Laterales en madera cálida de estudio
     auto drawWood = [&] (juce::Rectangle<int> r)
     {
         g.setColour (juce::Colour (0xff4a2b16));
@@ -209,7 +202,6 @@ void BruceSwedienRiderEditor::paint (juce::Graphics& g)
     drawWood (bounds.removeFromLeft (14));
     drawWood (bounds.removeFromRight (14));
 
-    // Encabezado
     auto header = bounds.removeFromTop (64);
     g.setColour (juce::Colour (0xff120e0b));
     g.fillRect (header);
@@ -222,16 +214,20 @@ void BruceSwedienRiderEditor::paint (juce::Graphics& g)
 
     g.setColour (juce::Colour (0xffe5a94c));
     g.setFont (juce::Font (juce::FontOptions (9.5f).withStyle ("Bold")));
-    g.drawText ("ANALOG CONSOLE RIDER  |  ZERO LATENCY", header.reduced (14, 0).withTrimmedTop (34), juce::Justification::centredLeft);
+    g.drawText ("ANALOG CONSOLE RIDER  |  0-SAMPLE LATENCY", header.reduced (14, 0).withTrimmedTop (34), juce::Justification::centredLeft);
 }
 
 void BruceSwedienRiderEditor::resized()
 {
     auto area = getLocalBounds().reduced (22, 74);
 
-    auto topSource = area.removeFromTop (44);
-    sourceLbl.setBounds (topSource.removeFromTop (14));
-    sourceBox.setBounds (topSource);
+    auto topRow = area.removeFromTop (44);
+    auto modeCol = topRow.removeFromRight (126);
+    sourceLbl.setBounds (topRow.removeFromTop (14));
+    sourceBox.setBounds (topRow.withTrimmedRight (10));
+
+    workflowLbl.setBounds (modeCol.removeFromTop (14));
+    workflowBox.setBounds (modeCol);
 
     area.removeFromTop (10);
 
@@ -239,23 +235,23 @@ void BruceSwedienRiderEditor::resized()
     rideBtn.setBounds   (bottomBar.removeFromLeft (110));
     pocketBtn.setBounds (bottomBar.removeFromLeft (110));
 
-    auto rightCol = area.removeFromRight (172);
+    auto rightCol = area.removeFromRight (174);
     auto leftCol  = area.withTrimmedRight (12);
 
     faderStrip.setBounds (leftCol);
 
     speedLbl.setBounds (rightCol.removeFromTop (14));
     speedBox.setBounds (rightCol.removeFromTop (24));
-    rightCol.removeFromTop (8);
+    rightCol.removeFromTop (6);
 
     amountLbl.setBounds    (rightCol.removeFromTop (14));
-    amountSlider.setBounds (rightCol.removeFromTop (76));
+    amountSlider.setBounds (rightCol.removeFromTop (72));
 
     floorLbl.setBounds  (rightCol.removeFromTop (14));
-    floorSlider.setBounds (rightCol.removeFromTop (76));
+    floorSlider.setBounds (rightCol.removeFromTop (72));
 
     gainLbl.setBounds  (rightCol.removeFromTop (14));
-    gainSlider.setBounds (rightCol.removeFromTop (76));
+    gainSlider.setBounds (rightCol.removeFromTop (72));
 
     preampLbl.setBounds (rightCol.removeFromTop (14));
     preampBox.setBounds (rightCol.removeFromTop (24));
