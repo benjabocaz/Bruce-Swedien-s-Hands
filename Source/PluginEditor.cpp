@@ -15,7 +15,6 @@ void ConsoleLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int 
     const float cy = bounds.getCentreY() - 2.0f;
     const float angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
 
-    // Marcas de escala alrededor de la perilla
     const int numTicks = 11;
     g.setColour (juce::Colour (0xff9b8a70).withAlpha (0.65f));
     for (int i = 0; i < numTicks; ++i)
@@ -30,7 +29,6 @@ void ConsoleLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int 
                     cy + std::sin (tickAngle) * rOuter, 1.1f);
     }
 
-    // Sombra y cuerpo metálico oscuro de la perilla
     g.setColour (juce::Colours::black.withAlpha (0.65f));
     g.fillEllipse (cx - radius, cy - radius + 2.0f, diameter, diameter);
 
@@ -39,7 +37,6 @@ void ConsoleLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int 
     g.setGradientFill (bodyGrad);
     g.fillEllipse (cx - radius, cy - radius, diameter, diameter);
 
-    // Tapa superior de color de consola
     const float capRadius = radius * 0.72f;
     const juce::Colour capCol = slider.findColour (juce::Slider::rotarySliderFillColourId);
     g.setColour (capCol);
@@ -48,7 +45,6 @@ void ConsoleLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int 
     g.setColour (juce::Colours::black.withAlpha (0.45f));
     g.drawEllipse (cx - capRadius, cy - capRadius, capRadius * 2.0f, capRadius * 2.0f, 1.0f);
 
-    // Puntero blanco/crema de posición
     const float ptrAngle = angle - juce::MathConstants<float>::halfPi;
     g.setColour (juce::Colour (0xfffbf4e4));
     g.drawLine (cx + std::cos (ptrAngle) * (capRadius * 0.25f),
@@ -62,7 +58,6 @@ void ConsoleLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height,
 {
     auto r = juce::Rectangle<float> (0.0f, 0.0f, static_cast<float> (width), static_cast<float> (height));
 
-    // Visor oscuro tipo cristal/consola con resplandor ámbar sutil
     juce::ColourGradient winGrad (juce::Colour (0xff1c1610), 0.0f, 0.0f,
                                   juce::Colour (0xff0d0a07), 0.0f, r.getHeight(), false);
     g.setGradientFill (winGrad);
@@ -71,19 +66,18 @@ void ConsoleLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height,
     g.setColour (juce::Colour (0xff6e573b));
     g.drawRoundedRectangle (r.reduced (0.5f), 4.0f, 1.1f);
 
-    // Flecha discreta a la derecha
-    const float arrowX = r.getRight() - 14.0f;
+    const float arrowX = r.getRight() - 13.0f;
     const float arrowY = r.getCentreY();
     juce::Path tri;
-    tri.addTriangle (arrowX - 4.0f, arrowY - 2.5f,
-                     arrowX + 4.0f, arrowY - 2.5f,
+    tri.addTriangle (arrowX - 3.5f, arrowY - 2.5f,
+                     arrowX + 3.5f, arrowY - 2.5f,
                      arrowX,        arrowY + 3.0f);
     g.setColour (juce::Colour (0xffe8b75c));
     g.fillPath (tri);
 
     g.setColour (juce::Colour (0xfff6c76b));
-    g.setFont (juce::Font (juce::FontOptions (12.0f).withStyle ("Bold")));
-    g.drawText (box.getText(), r.reduced (10.0f, 2.0f).withTrimmedRight (16.0f),
+    g.setFont (juce::Font (juce::FontOptions (11.5f).withStyle ("Bold")));
+    g.drawText (box.getText(), r.reduced (9.0f, 2.0f).withTrimmedRight (15.0f),
                 juce::Justification::centredLeft, true);
 }
 
@@ -100,7 +94,6 @@ void ConsoleLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton
     g.setColour (active ? ledCol.withAlpha (0.85f) : juce::Colour (0xff4d3e2d));
     g.drawRoundedRectangle (r.reduced (0.5f), 4.0f, 1.1f);
 
-    // Piloto LED a la izquierda
     const float ledSize = 9.0f;
     const float ledX = r.getX() + 9.0f;
     const float ledY = r.getCentreY() - ledSize * 0.5f;
@@ -149,7 +142,6 @@ void HarrisonFaderStrip::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xff524230));
     g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.1f);
 
-    // Mitad izquierda: Fader de consola que sube y baja en tiempo real
     auto faderArea = bounds.removeFromLeft (bounds.getWidth() * 0.54f).reduced (8.0f, 12.0f);
 
     g.setColour (juce::Colour (0xffe8c27a));
@@ -185,7 +177,6 @@ void HarrisonFaderStrip::paint (juce::Graphics& g)
     g.setColour ((clampedRide >= 0.0f ? juce::Colour (0xfff2b84b) : juce::Colour (0xffd97848)).withAlpha (0.40f));
     g.fillRect (trackArea.getCentreX() - 3.0f, barTop, 6.0f, barH);
 
-    // Capuchón físico del fader estilo consola
     juce::Rectangle<float> cap (trackArea.getCentreX() - 21.0f, capY - 12.0f, 42.0f, 24.0f);
     g.setColour (juce::Colours::black.withAlpha (0.70f));
     g.fillRoundedRectangle (cap.translated (0.0f, 2.0f), 3.0f);
@@ -200,7 +191,6 @@ void HarrisonFaderStrip::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xfffaf0dc));
     g.drawHorizontalLine (static_cast<int> (cap.getCentreY()), cap.getX() + 4.0f, cap.getRight() - 4.0f);
 
-    // Mitad derecha: Medidor LED ámbar dual + lectura numérica
     auto meterArea = bounds.reduced (8.0f, 12.0f);
     juce::String rideText = (displayedRideDb >= 0.0f ? "+" : "") + juce::String (displayedRideDb, 1) + " dB";
     g.setColour (juce::Colour (0xfff5c469));
@@ -245,7 +235,7 @@ BruceSwedienRiderEditor::BruceSwedienRiderEditor (BruceSwedienRiderProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p), faderStrip (p)
 {
     setLookAndFeel (&consoleLnf);
-    setSize (470, 590);
+    setSize (480, 600);
     addAndMakeVisible (faderStrip);
 
     prevSourceBtn.onClick = [this] { stepSource (-1); };
@@ -261,6 +251,9 @@ BruceSwedienRiderEditor::BruceSwedienRiderEditor (BruceSwedienRiderProcessor& p)
 
     configureCombo (workflowBox, workflowLbl, "MODE");
     workflowBox.addItemList ({ "Tracking", "Mixing" }, 1);
+
+    configureCombo (channelBox, channelLbl, "CHANNEL");
+    channelBox.addItemList ({ "Auto", "Mono", "Stereo" }, 1);
 
     configureCombo (speedBox, speedLbl, "SPEED");
     speedBox.addItemList ({ "Super Fast", "Fast", "Natural", "Slow", "Super Slow" }, 1);
@@ -280,6 +273,7 @@ BruceSwedienRiderEditor::BruceSwedienRiderEditor (BruceSwedienRiderProcessor& p)
     auto& v = audioProcessor.apvts;
     sourceAtt   = std::make_unique<ComboAtt>  (v, "source", sourceBox);
     workflowAtt = std::make_unique<ComboAtt>  (v, "workflow", workflowBox);
+    channelAtt  = std::make_unique<ComboAtt>  (v, "channelMode", channelBox);
     speedAtt    = std::make_unique<ComboAtt>  (v, "speed", speedBox);
     preampAtt   = std::make_unique<ComboAtt>  (v, "preamp", preampBox);
     amountAtt   = std::make_unique<SliderAtt> (v, "amount", amountSlider);
@@ -336,13 +330,11 @@ void BruceSwedienRiderEditor::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds();
 
-    // Panel metálico oscuro cepillado
     juce::ColourGradient bg (juce::Colour (0xff26201b), 0.0f, 0.0f,
                              juce::Colour (0xff14100d), 0.0f, static_cast<float> (getHeight()), false);
     g.setGradientFill (bg);
     g.fillRect (bounds);
 
-    // Laterales en nogal cálido
     auto drawWood = [&] (juce::Rectangle<int> r)
     {
         juce::ColourGradient wood (juce::Colour (0xff59341b), static_cast<float> (r.getX()), 0.0f,
@@ -355,7 +347,6 @@ void BruceSwedienRiderEditor::paint (juce::Graphics& g)
     drawWood (bounds.removeFromLeft (14));
     drawWood (bounds.removeFromRight (14));
 
-    // Encabezado estilo consola
     auto header = bounds.removeFromTop (66);
     g.setColour (juce::Colour (0xff120e0b));
     g.fillRect (header);
@@ -370,7 +361,6 @@ void BruceSwedienRiderEditor::paint (juce::Graphics& g)
     g.setFont (juce::Font (juce::FontOptions (9.5f).withStyle ("Bold")));
     g.drawText ("ANALOG CONSOLE RIDER  |  0-SAMPLE LATENCY", header.reduced (14, 0).withTrimmedTop (36), juce::Justification::centred);
 
-    // Etiquetas de fuentes de referencia arriba del selector SOURCE
     g.setColour (juce::Colour (0xffc9b79c));
     g.setFont (juce::Font (juce::FontOptions (8.0f).withStyle ("Bold")));
     g.drawText ("VOCALS  ·  BASS  ·  GUITAR  ·  DRUM BUS  ·  KEYS  ·  SYNTH  ·  MASTER BUS",
@@ -381,11 +371,17 @@ void BruceSwedienRiderEditor::resized()
 {
     auto area = getLocalBounds().reduced (22, 74);
 
-    // Fila superior: SOURCE (con flechas < y >) + MODE (Tracking / Mixing)
+    // Fila superior: SOURCE (< >) a la izquierda, MODE y CHANNEL a la derecha
     auto topRow = area.removeFromTop (52);
     topRow.removeFromTop (12);
 
-    auto modeCol = topRow.removeFromRight (118);
+    auto chanCol = topRow.removeFromRight (94);
+    channelLbl.setBounds (chanCol.removeFromTop (14));
+    channelBox.setBounds (chanCol.removeFromTop (24));
+
+    topRow.removeFromRight (6);
+
+    auto modeCol = topRow.removeFromRight (104);
     workflowLbl.setBounds (modeCol.removeFromTop (14));
     workflowBox.setBounds (modeCol.removeFromTop (24));
 
@@ -393,15 +389,14 @@ void BruceSwedienRiderEditor::resized()
     sourceLbl.setBounds (srcCol.removeFromTop (14));
 
     auto srcControls = srcCol.removeFromTop (24);
-    prevSourceBtn.setBounds (srcControls.removeFromLeft (24));
+    prevSourceBtn.setBounds (srcControls.removeFromLeft (22));
     srcControls.removeFromLeft (4);
-    nextSourceBtn.setBounds (srcControls.removeFromRight (24));
+    nextSourceBtn.setBounds (srcControls.removeFromRight (22));
     srcControls.removeFromRight (4);
     sourceBox.setBounds (srcControls);
 
     area.removeFromTop (10);
 
-    // Barra inferior: RIDE y POCKET
     auto bottomBar = area.removeFromBottom (34);
     rideBtn.setBounds   (bottomBar.removeFromLeft (112));
     bottomBar.removeFromLeft (8);
@@ -409,7 +404,6 @@ void BruceSwedienRiderEditor::resized()
 
     area.removeFromBottom (6);
 
-    // Columna derecha: SPEED, AMOUNT, FLOOR, GAIN, PREAMP
     auto rightCol = area.removeFromRight (172);
     auto leftCol  = area.withTrimmedRight (12);
 
