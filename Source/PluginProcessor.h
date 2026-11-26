@@ -149,23 +149,23 @@ private:
         float bodyLowHz;
         float bodyHighHz;
         float sibCutoffHz;
-        float wBody;               // peso de energía en banda cuerpo
-        float wSub;                // peso de energía en banda grave/sub
-        float wSib;                // peso base de energía en banda sibilancia/agudos
-        float sibThresholdRatio;   // umbral de relación sibilancia / (cuerpo + sibilancia)
-        float sibGuardStrength;    // cuánto reduce el peso sibilante al superar el umbral
-        float transientTame;       // cuánto frena transientes secos vs energía sostenida
-        float holdMs;              // espera antes de soltar hacia 0 dB
-        float deadzoneDb;          // zona muerta musical alrededor del objetivo (dB)
-        float floorBiasDb;         // ajuste fino de piso por fuente (dB)
-        float stiffnessScale;      // multiplicador de frecuencia natural del resorte
-        float dampingScale;        // multiplicador de amortiguamiento
-        float preampDriveScale;    // escala de drive del preamp para esta fuente
+        float wBody;
+        float wSub;
+        float wSib;
+        float sibThresholdRatio;
+        float sibGuardStrength;
+        float transientTame;
+        float holdMs;
+        float deadzoneDb;
+        float floorBiasDb;
+        float stiffnessScale;
+        float dampingScale;
+        float preampDriveScale;
     };
 
     static SourceProfile getSourceProfile (int sourceIdx);
 
-    // CAPA 1: Detector espectral multibanda psicoacústico
+    // CAPA 1: Detector espectral multibanda psicoacústico (detección unificada mono/estéreo)
     class SpectralAnalyzer
     {
     public:
@@ -262,7 +262,8 @@ private:
     float smAmountDb = 6.0f;
     float smFloorDb  = -36.0f;
     float smGainDb   = 0.0f;
-    float smTrackingMix = 0.0f; // 0.0 = Mixing, 1.0 = Tracking
+    float smTrackingMix = 0.0f;     // 0.0 = Mixing, 1.0 = Tracking
+    float smChannelModeMix = 0.0f;  // 0.0 = Stereo, 1.0 = Mono (cuando aplica)
     float smPreampCrossfade = 1.0f;
     int lastPreampIdx = 1;
     int prevPreampIdx = 1;
