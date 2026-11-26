@@ -1,0 +1,27 @@
+name: Build Bruce Swedien's Hands (AU)
+
+on:
+  push:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  build-macos-au:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64"
+
+      - name: Build AU Plugin
+        run: cmake --build build --config Release --target BruceSwediensHands_AU --parallel
+
+      - name: Ad-Hoc Codesign AU
+        run: codesign --force --deep --sign - "build/BruceSwediensHands_artefacts/Release/AU/Bruce Swedien's Hands.component"
+
+      - name: Upload AU Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: BruceSwediensHands-AU
+          path: build/BruceSwediensHands_artefacts/Release/AU/Bruce Swedien's Hands.component
