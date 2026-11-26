@@ -25,6 +25,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout BruceSwedienRiderProcessor::
         "speed", "Speed",
         juce::StringArray { "Super Fast", "Fast", "Natural", "Slow", "Super Slow" }, 2));
 
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        "workflow", "Mode",
+        juce::StringArray { "Tracking", "Mixing" }, 1));
+
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         "amount", "Amount", juce::NormalisableRange<float> (0.0f, 12.0f, 0.1f), 6.0f));
 
@@ -49,20 +53,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout BruceSwedienRiderProcessor::
 
 BruceSwedienRiderProcessor::SourceProfile BruceSwedienRiderProcessor::getSourceProfile (int sourceIdx)
 {
-    // bodyLpHz, sibilanceHpHz, sibilanceReject, subReject, holdMs, defaultSpeedIdx
+    // bodyLowHz, bodyHighHz, sibCutoffHz, sibGuard, subGuard, transTame, holdMs, floorBiasDb, stiffnessScale, dampingScale, preampDriveScale
     switch (sourceIdx)
     {
-        case 0: return { 2600.0f, 4500.0f, 0.85f, 0.70f, 160.0f, 2.0f }; // Vocals: evita "S" y subgraves, respira frases
-        case 1: return { 2800.0f, 4800.0f, 0.75f, 0.65f, 240.0f, 2.0f }; // Vocal Bus: bloque coral parejo
-        case 2: return {  650.0f, 2500.0f, 0.55f, 0.25f, 140.0f, 1.0f }; // Bass: cuerpo grave/medio definido
-        case 3: return { 3200.0f, 5000.0f, 0.65f, 0.60f, 180.0f, 2.0f }; // Guitar: medios con carácter, sin chillidos
-        case 4: return { 3500.0f, 5500.0f, 0.50f, 0.75f, 220.0f, 3.0f }; // Acoustic / Strings: fraseo natural y amplio
-        case 5: return { 1800.0f, 4500.0f, 0.40f, 0.35f, 260.0f, 2.0f }; // Drum Bus: acompaña sección sin bombear golpes
-        case 6: return { 2200.0f, 5000.0f, 0.45f, 0.30f, 150.0f, 1.0f }; // Drum Machine: pulso firme y controlado
-        case 7: return { 3000.0f, 5200.0f, 0.55f, 0.55f, 200.0f, 2.0f }; // Keys: dinámica de toque equilibrada
-        case 8: return { 3400.0f, 5500.0f, 0.45f, 0.40f, 210.0f, 2.0f }; // Synth: suaviza aperturas de filtro y picos
+        case 0: return { 210.0f, 2800.0f, 4600.0f, 0.90f, 0.80f, 0.45f, 175.0f,  1.5f, 1.05f, 1.05f, 1.00f }; // Vocals
+        case 1: return { 200.0f, 3000.0f, 4800.0f, 0.80f, 0.70f, 0.55f, 250.0f,  2.0f, 0.92f, 1.12f, 1.05f }; // Vocal Bus
+        case 2: return {  55.0f,  850.0f, 2400.0f, 0.65f, 0.25f, 0.50f, 150.0f, -1.0f, 1.15f, 1.08f, 1.15f }; // Bass
+        case 3: return { 170.0f, 3200.0f, 5000.0f, 0.70f, 0.65f, 0.55f, 190.0f,  0.0f, 1.00f, 1.00f, 1.10f }; // Guitar
+        case 4: return { 160.0f, 3500.0f, 5500.0f, 0.60f, 0.75f, 0.65f, 240.0f,  2.5f, 0.85f, 1.15f, 0.95f }; // Acoustic / Strings
+        case 5: return {  90.0f, 2200.0f, 4600.0f, 0.50f, 0.35f, 0.82f, 270.0f, -1.5f, 0.90f, 1.10f, 1.20f }; // Drum Bus
+        case 6: return { 110.0f, 2600.0f, 5000.0f, 0.55f, 0.30f, 0.72f, 155.0f, -1.0f, 1.12f, 1.05f, 1.12f }; // Drum Machine
+        case 7: return { 140.0f, 3100.0f, 5200.0f, 0.60f, 0.55f, 0.50f, 210.0f,  1.0f, 0.95f, 1.05f, 1.00f }; // Keys
+        case 8: return { 130.0f, 3400.0f, 5500.0f, 0.55f, 0.45f, 0.60f, 220.0f,  0.5f, 0.92f, 1.08f, 1.08f }; // Synth
         case 9:
-        default:return { 2500.0f, 6000.0f, 0.60f, 0.45f, 320.0f, 3.0f }; // Master Bus: movimientos muy sutiles y musicales
+        default:return { 120.0f, 2800.0f, 6000.0f, 0.65f, 0.45f, 0.75f, 340.0f,  1.0f, 0.75f, 1.25f, 0.70f }; // Master Bus
     }
 }
 
@@ -71,22 +75,40 @@ void BruceSwedienRiderProcessor::prepareToPlay (double sampleRate, int)
     currentSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
     setLatencySamples (0);
 
-    bodyLpL.prepare (currentSampleRate);
-    bodyLpR.prepare (currentSampleRate);
-    sibLpL.prepare (currentSampleRate);
-    sibLpR.prepare (currentSampleRate);
-    subLpL.prepare (currentSampleRate);
-    subLpR.prepare (currentSampleRate);
+    subLpFilter.prepare (currentSampleRate);
+    bodyHpFilter.prepare (currentSampleRate);
+    bodyLpFilter.prepare (currentSampleRate);
+    sibHpFilter.prepare (currentSampleRate);
 
-    envDb = -80.0f;
-    sibEnvDb = -80.0f;
+    preampInShelf.prepare (currentSampleRate);
+    preampOutShelf.prepare (currentSampleRate);
+
+    fastEnvDb = -80.0f;
+    slowEnvDb = -80.0f;
+    sibEnvDb  = -80.0f;
+    noiseFloorEstDb = -52.0f;
+    prevSampleDb = -80.0f;
+
     currentGainDb = 0.0f;
-    faderVelocityDb = 0.0f;
+    faderVelDbPerSec = 0.0f;
     holdSamplesRemaining = 0;
-    pocketPhase = 0.0f;
+
+    pocketPhaseA = 0.0f;
+    pocketPhaseB = 1.73f;
+    pocketPhaseC = 3.41f;
+
+    smAmountDb = apvts.getRawParameterValue ("amount")->load();
+    smFloorDb  = apvts.getRawParameterValue ("floor")->load();
+    smGainDb   = apvts.getRawParameterValue ("gain")->load();
+    smTrackingMix = (apvts.getRawParameterValue ("workflow")->load() < 0.5f) ? 1.0f : 0.0f;
+
+    lastPreampIdx = static_cast<int> (apvts.getRawParameterValue ("preamp")->load());
+    prevPreampIdx = lastPreampIdx;
+    smPreampMix   = 1.0f;
+    smoothReady   = true;
+
     dcBlockerX.fill (0.0f);
     dcBlockerY.fill (0.0f);
-    preampToneZ.fill (0.0f);
 }
 
 void BruceSwedienRiderProcessor::releaseResources() {}
@@ -102,52 +124,48 @@ bool BruceSwedienRiderProcessor::isBusesLayoutSupported (const BusesLayout& layo
 }
 #endif
 
-inline float BruceSwedienRiderProcessor::applyPreampSample (float x, int preampIdx, float driveAmount, int ch) noexcept
+inline float BruceSwedienRiderProcessor::applyPreampSample (float x, int preampIdx, float driveAmount, float faderPushNorm, int ch) noexcept
 {
-    // preampIdx: 0 = Clean, 1 = Harrison 32C, 2 = Neve, 3 = API
-    if (preampIdx == 0 && driveAmount <= 0.001f)
+    const float effectiveDrive = std::clamp (driveAmount * (0.85f + 0.35f * faderPushNorm), 0.0f, 1.0f);
+    if (preampIdx == 0 && effectiveDrive <= 0.0005f)
         return x;
 
-    float driven = x;
+    float y = x;
     switch (preampIdx)
     {
-        case 1: // Harrison 32C: medios-graves firmes y saturación suave y abierta
+        case 1: // Harrison 32C: medios-graves firmes, presencia limpia y saturación asimétrica musical
         {
-            const float g = 1.0f + driveAmount * 1.65f;
-            const float s = x * g;
-            driven = std::tanh (s * 0.85f) / 0.85f + 0.04f * driveAmount * (s * s * s);
-            // Pequeño realce cálido en medios-bajos
-            preampToneZ[ch] += 0.035f * (driven - preampToneZ[ch]);
-            driven += 0.14f * driveAmount * preampToneZ[ch];
+            const float inStage = x * (1.0f + effectiveDrive * 1.45f);
+            const float asym = std::tanh (inStage + 0.08f * effectiveDrive * inStage * inStage)
+                       - 0.08f * effectiveDrive * 0.0064f;
+            const float norm = 1.0f / std::max (0.55f, std::tanh (1.0f + effectiveDrive * 1.45f));
+            y = asym * norm;
             break;
         }
-        case 2: // Neve: transformador denso y redondeo suave en agudos
+        case 2: // Neve: transformador denso con redondeo suave en agudos
         {
-            const float g = 1.0f + driveAmount * 2.1f;
-            driven = std::tanh (x * g) / std::max (0.45f, std::tanh (g));
-            preampToneZ[ch] += 0.18f * (driven - preampToneZ[ch]);
-            driven = driven * (1.0f - 0.15f * driveAmount) + preampToneZ[ch] * (0.15f * driveAmount);
+            const float g = 1.0f + effectiveDrive * 2.0f;
+            y = std::tanh (x * g) / std::max (0.48f, std::tanh (g));
             break;
         }
-        case 3: // API: punch en medios y ataque rápido
+        case 3: // API: punch rápido y medios articulados
         {
-            const float g = 1.0f + driveAmount * 1.85f;
+            const float g = 1.0f + effectiveDrive * 1.8f;
             const float u = x * g;
-            driven = u / (1.0f + 0.35f * std::abs (u));
+            y = u / (1.0f + 0.32f * std::abs (u));
             break;
         }
         case 0:
-        default:
+        default: // Clean: transparencia con micro-colchón final
         {
-            const float g = 1.0f + driveAmount * 0.5f;
-            driven = std::tanh (x * g) / std::max (0.6f, std::tanh (g));
+            const float g = 1.0f + effectiveDrive * 0.45f;
+            y = std::tanh (x * g) / std::max (0.65f, std::tanh (g));
             break;
         }
     }
 
-    // DC blocker para mantener limpio el cero eléctrico
-    const float dcOut = driven - dcBlockerX[ch] + 0.9992f * dcBlockerY[ch];
-    dcBlockerX[ch] = driven;
+    const float dcOut = y - dcBlockerX[ch] + 0.9994f * dcBlockerY[ch];
+    dcBlockerX[ch] = y;
     dcBlockerY[ch] = dcOut;
     return dcOut;
 }
@@ -161,41 +179,79 @@ void BruceSwedienRiderProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     if (numChannels == 0 || numSamples == 0)
         return;
 
-    // Si la pista es mono en el host, duplicamos el canal 0 al 1 para operar en estéreo limpio
     if (numChannels == 1)
         buffer.setSize (2, numSamples, true, false, true);
 
-    const int sourceIdx = static_cast<int> (apvts.getRawParameterValue ("source")->load());
-    const int speedIdx  = static_cast<int> (apvts.getRawParameterValue ("speed")->load());
-    const float amountDb = apvts.getRawParameterValue ("amount")->load();
-    const float floorDb  = apvts.getRawParameterValue ("floor")->load();
-    const float gainDb   = apvts.getRawParameterValue ("gain")->load();
-    const int preampIdx  = static_cast<int> (apvts.getRawParameterValue ("preamp")->load());
-    const bool pocketOn  = apvts.getRawParameterValue ("pocket")->load() >= 0.5f;
-    const bool rideOn    = apvts.getRawParameterValue ("ride")->load() >= 0.5f;
+    const int sourceIdx   = static_cast<int> (apvts.getRawParameterValue ("source")->load());
+    const int speedIdx    = static_cast<int> (apvts.getRawParameterValue ("speed")->load());
+    const int workflowIdx = static_cast<int> (apvts.getRawParameterValue ("workflow")->load()); // 0: Tracking, 1: Mixing
+    const float targetAmountDb = apvts.getRawParameterValue ("amount")->load();
+    const float targetFloorDb  = apvts.getRawParameterValue ("floor")->load();
+    const float targetGainDb   = apvts.getRawParameterValue ("gain")->load();
+    const int preampIdx        = static_cast<int> (apvts.getRawParameterValue ("preamp")->load());
+    const bool pocketOn        = apvts.getRawParameterValue ("pocket")->load() >= 0.5f;
+    const bool rideOn          = apvts.getRawParameterValue ("ride")->load() >= 0.5f;
+
+    if (preampIdx != lastPreampIdx)
+    {
+        prevPreampIdx = lastPreampIdx;
+        lastPreampIdx = preampIdx;
+        smPreampMix   = 0.0f;
+    }
 
     const auto profile = getSourceProfile (sourceIdx);
+    const float srFloat = static_cast<float> (currentSampleRate);
 
-    bodyLpL.setLowPass (profile.bodyLpHz);
-    bodyLpR.setLowPass (profile.bodyLpHz);
-    sibLpL.setLowPass (profile.sibilanceHpHz);
-    sibLpR.setLowPass (profile.sibilanceHpHz);
-    subLpL.setLowPass (120.0f);
-    subLpR.setLowPass (120.0f);
+    // Configuramos filtros multibanda y ecualización sutil del preamp
+    subLpFilter.setLowPass (120.0f, 0.7071f);
+    bodyHpFilter.setHighPass (profile.bodyLowHz, 0.7071f);
+    bodyLpFilter.setLowPass (profile.bodyHighHz, 0.7071f);
+    sibHpFilter.setHighPass (profile.sibCutoffHz, 0.7071f);
 
-    // Constantes de velocidad según el modo elegido (0..4)
-    static constexpr std::array<float, 5> followMs { 14.0f, 38.0f, 95.0f, 220.0f, 480.0f };
-    static constexpr std::array<float, 5> faderMs  { 25.0f, 65.0f, 155.0f, 340.0f, 720.0f };
+    if (preampIdx == 1) // Harrison 32C
+    {
+        preampInShelf.setLowShelf (145.0f, 1.3f, 0.7071f);
+        preampOutShelf.setHighShelf (7500.0f, 0.8f, 0.7071f);
+    }
+    else if (preampIdx == 2) // Neve
+    {
+        preampInShelf.setLowShelf (110.0f, 1.6f, 0.7071f);
+        preampOutShelf.setHighShelf (6500.0f, -1.2f, 0.7071f);
+    }
+    else if (preampIdx == 3) // API
+    {
+        preampInShelf.setLowShelf (180.0f, 0.6f, 0.7071f);
+        preampOutShelf.setHighShelf (3200.0f, 1.4f, 0.7071f);
+    }
+    else
+    {
+        preampInShelf.setLowShelf (120.0f, 0.0f, 0.7071f);
+        preampOutShelf.setHighShelf (8000.0f, 0.0f, 0.7071f);
+    }
 
-    const float detCoeff   = 1.0f - std::exp (-1.0f / (0.001f * followMs[static_cast<size_t> (std::clamp (speedIdx, 0, 4))] * static_cast<float> (currentSampleRate)));
-    const float faderCoeff = 1.0f - std::exp (-1.0f / (0.001f * faderMs[static_cast<size_t> (std::clamp (speedIdx, 0, 4))]  * static_cast<float> (currentSampleRate)));
-    const int holdTotalSamples = static_cast<int> (0.001f * profile.holdMs * static_cast<float> (currentSampleRate));
+    // Constantes de velocidad según el modo elegido (0: Super Fast .. 4: Super Slow)
+    static constexpr std::array<float, 5> speedStiffnessHz { 7.5f, 4.4f, 2.4f, 1.25f, 0.65f };
+    static constexpr std::array<float, 5> speedZeta        { 0.92f, 0.96f, 1.02f, 1.08f, 1.15f };
 
-    // Objetivo de nivel musical (alrededor de -18 dBFS como punto de equilibrio de consola)
-    constexpr float targetDb = -18.0f;
+    const size_t sIdx = static_cast<size_t> (std::clamp (speedIdx, 0, 4));
+    const float baseOmega = juce::MathConstants<float>::twoPi * speedStiffnessHz[sIdx] * profile.springStiffnessScale;
+    const float baseZeta  = speedZeta[sIdx] * profile.dampingScale;
+    const float dt = 1.0f / srFloat;
 
-    // Color analógico sutil ligado al movimiento y a la fuente
-    const float baseDrive = (sourceIdx == 9 ? 0.08f : 0.18f) + (amountDb / 12.0f) * 0.22f;
+    const float fastCoeff = 1.0f - std::exp (-1.0f / (0.012f * srFloat));
+    const float slowCoeff = 1.0f - std::exp (-1.0f / (0.140f * srFloat));
+    const float sibCoeff  = 1.0f - std::exp (-1.0f / (0.015f * srFloat));
+    const float paramSmCoeff = 1.0f - std::exp (-1.0f / (0.025f * srFloat));
+    const float preampSmCoeff = 1.0f - std::exp (-1.0f / (0.035f * srFloat));
+
+    const float targetTrackingMix = (workflowIdx == 0) ? 1.0f : 0.0f;
+    const int holdTotalSamples = static_cast<int> (0.001f * profile.holdMs * srFloat);
+
+    // En Tracking somos más prudentes con el rango y la saturación; en Mixing más expresivos
+    const float trackingRangeScale = juce::jmap (smTrackingMix, 0.0f, 1.0f, 1.0f, 0.72f);
+    const float trackingDriveScale = juce::jmap (smTrackingMix, 0.0f, 1.0f, 1.0f, 0.65f);
+
+    constexpr float targetBalanceDb = -18.0f;
 
     auto* left  = buffer.getWritePointer (0);
     auto* right = buffer.getWritePointer (1);
@@ -205,90 +261,143 @@ void BruceSwedienRiderProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     for (int i = 0; i < numSamples; ++i)
     {
+        if (! smoothReady)
+            smoothReady = true;
+
+        smAmountDb    += paramSmCoeff * (targetAmountDb - smAmountDb);
+        smFloorDb     += paramSmCoeff * (targetFloorDb - smFloorDb);
+        smGainDb      += paramSmCoeff * (targetGainDb - smGainDb);
+        smTrackingMix += paramSmCoeff * (targetTrackingMix - smTrackingMix);
+        smPreampMix    = std::min (1.0f, smPreampMix + preampSmCoeff);
+
         const float inL = left[i];
         const float inR = right[i];
         peakIn = std::max ({ peakIn, std::abs (inL), std::abs (inR) });
 
-        // Escucha espectral: separamos cuerpo, agudos/sibilancias y subgraves
-        const float subL = subLpL.processLP (inL);
-        const float subR = subLpR.processLP (inR);
-        const float noSubL = inL - subL * profile.subReject;
-        const float noSubR = inR - subR * profile.subReject;
+        // 1. Escucha espectral multibanda (0 muestras de latencia)
+        const float subL  = subLpFilter.processSample (0, inL);
+        const float subR  = subLpFilter.processSample (1, inR);
+        const float noSubL = inL - subL * profile.subGuard;
+        const float noSubR = inR - subR * profile.subGuard;
 
-        const float bodyL = bodyLpL.processLP (noSubL);
-        const float bodyR = bodyLpR.processLP (noSubR);
-        const float sibL  = noSubL - sibLpL.processLP (noSubL);
-        const float sibR  = noSubR - sibLpR.processLP (noSubR);
+        const float bodyL = bodyLpFilter.processSample (0, bodyHpFilter.processSample (0, noSubL));
+        const float bodyR = bodyLpFilter.processSample (1, bodyHpFilter.processSample (1, noSubR));
+        const float sibL  = sibHpFilter.processSample (0, inL);
+        const float sibR  = sibHpFilter.processSample (1, inR);
 
-        // Si sube mucho la sibilancia ("S") respecto al cuerpo en voces, reducimos su peso en el detector
-        const float bodyAmp = std::max (std::abs (bodyL), std::abs (bodyR));
-        const float sibAmp  = std::max (std::abs (sibL), std::abs (sibR));
-        const float sibPenalty = (sibAmp > bodyAmp * 1.15f) ? (1.0f - profile.sibilanceReject * 0.85f) : (1.0f - profile.sibilanceReject * 0.35f);
+        const float bodyEnergy = std::max (std::abs (bodyL), std::abs (bodyR));
+        const float sibEnergy  = std::max (std::abs (sibL), std::abs (sibR));
+        const float sibDbInst  = juce::Decibels::gainToDecibels (std::max (sibEnergy, 1.0e-6f), -80.0f);
+        sibEnvDb += sibCoeff * (sibDbInst - sibEnvDb);
 
-        const float detSample = std::max (std::abs (bodyL + sibL * sibPenalty),
-                                        std::abs (bodyR + sibR * sibPenalty));
-        const float sampleDb = juce::Decibels::gainToDecibels (std::max (detSample, 1.0e-6f), -80.0f);
+        // Si sube mucho la sibilancia respecto al cuerpo, reducimos su peso en el detector
+        const float sibToBodyRatio = sibEnergy / std::max (bodyEnergy, 1.0e-5f);
+        const float sibWeight = (sibToBodyRatio > 1.10f)
+            ? std::max (0.05f, 1.0f - profile.sibilanceGuard * std::clamp ((sibToBodyRatio - 0.8f) * 1.4f, 0.0f, 1.0f))
+            : (1.0f - profile.sibilanceGuard * 0.30f);
 
-        envDb += detCoeff * (sampleDb - envDb);
+        const float detAmp = std::max (bodyEnergy + sibEnergy * sibWeight,
+                                       0.35f * std::max (std::abs (inL), std::abs (inR)));
+        const float instDb = juce::Decibels::gainToDecibels (std::max (detAmp, 1.0e-6f), -80.0f);
 
-        float desiredGainDb = 0.0f;
-        if (! rideOn || amountDb <= 0.01f)
+        fastEnvDb += fastCoeff * (instDb - fastEnvDb);
+        slowEnvDb += slowCoeff * (instDb - slowEnvDb);
+
+        // Diferencia entre envolvente rápida y lenta para domar transientes secos en buses/voces
+        const float transientSpikeDb = std::max (0.0f, fastEnvDb - slowEnvDb);
+        const float effectiveLevelDb = fastEnvDb - transientSpikeDb * profile.transientTame * 0.65f;
+
+        // Estimación adaptativa del piso de ruido / variabilidad de señal
+        const float deltaDb = std::abs (instDb - prevSampleDb);
+        prevSampleDb = instDb;
+        if (instDb < smFloorDb + 6.0f && deltaDb < 1.2f)
+            noiseFloorEstDb += (1.0f - std::exp (-dt / 0.35f)) * (instDb - noiseFloorEstDb);
+
+        const float effectiveFloorDb = smFloorDb + profile.floorBiasDb * (0.6f + 0.4f * smTrackingMix);
+        const float maxRangeDb = std::max (0.0f, smAmountDb * trackingRangeScale);
+
+        float targetRideDb = 0.0f;
+        if (! rideOn || maxRangeDb <= 0.01f)
         {
-            desiredGainDb = 0.0f;
+            targetRideDb = 0.0f;
             holdSamplesRemaining = 0;
         }
-        else if (envDb < floorDb)
+        else if (effectiveLevelDb < effectiveFloorDb || (effectiveLevelDb < noiseFloorEstDb + 3.5f && deltaDb < 0.35f))
         {
-            // Por debajo del piso (silencio / respiración): mantenemos hold y luego volvemos suave a 0 dB (sin inflar ruido)
+            // Pausa o respiración: mantenemos brevemente con hold y luego volvemos suave a 0 dB
             if (holdSamplesRemaining > 0)
             {
                 --holdSamplesRemaining;
-                desiredGainDb = currentGainDb;
+                targetRideDb = currentGainDb;
             }
             else
             {
-                desiredGainDb = 0.0f;
+                targetRideDb = 0.0f;
             }
         }
         else
         {
             holdSamplesRemaining = holdTotalSamples;
-            const float rawDiff = targetDb - envDb;
-            // Suavizamos con curva tanh para que el movimiento sea musical y nunca brusco
-            const float maxRange = std::max (0.5f, amountDb);
-            desiredGainDb = std::tanh (rawDiff / (maxRange * 1.15f)) * maxRange;
+            const float diffDb = targetBalanceDb - effectiveLevelDb;
+            // Curva no lineal suave: transparente en el centro y musical en los extremos
+            const float normDiff = diffDb / std::max (2.0f, maxRangeDb * 1.25f);
+            targetRideDb = std::tanh (normDiff) * maxRangeDb;
         }
 
-        // Inercia y "Pocket" humano: ligera variación orgánicamente lenta y asimetría al subir vs bajar
-        float effectiveCoeff = faderCoeff;
-        if (desiredGainDb < currentGainDb)
-            effectiveCoeff *= 1.18f; // frena/contiene picos con decisión
-        else
-            effectiveCoeff *= 0.82f; // sube con más calma para sonar natural
+        // 2. Modelo físico de resorte/masa (2º orden) con asimetría subida vs bajada
+        const bool movingDown = (targetRideDb < currentGainDb);
+        const float omega = baseOmega * (movingDown ? 1.18f : 0.85f);
+        const float zeta  = baseZeta  * (movingDown ? 1.05f : 0.95f);
 
-        float pocketOffsetDb = 0.0f;
-        if (pocketOn && rideOn && amountDb > 0.01f)
+        const float accel = omega * omega * (targetRideDb - currentGainDb) - 2.0f * zeta * omega * faderVelDbPerSec;
+        faderVelDbPerSec += accel * dt;
+        currentGainDb += faderVelDbPerSec * dt;
+        currentGainDb = std::clamp (currentGainDb, -18.0f, 18.0f);
+
+        // 3. POCKET orgánico no repetitivo (3 osciladores lentos inarmónicos)
+        float pocketDb = 0.0f;
+        if (pocketOn && rideOn && maxRangeDb > 0.05f)
         {
-            pocketPhase += juce::MathConstants<float>::twoPi * 1.35f / static_cast<float> (currentSampleRate);
-            if (pocketPhase > juce::MathConstants<float>::twoPi)
-                pocketPhase -= juce::MathConstants<float>::twoPi;
+            pocketPhaseA += juce::MathConstants<float>::twoPi * 0.73f * dt;
+            pocketPhaseB += juce::MathConstants<float>::twoPi * 1.19f * dt;
+            pocketPhaseC += juce::MathConstants<float>::twoPi * 1.91f * dt;
+            if (pocketPhaseA > juce::MathConstants<float>::twoPi) pocketPhaseA -= juce::MathConstants<float>::twoPi;
+            if (pocketPhaseB > juce::MathConstants<float>::twoPi) pocketPhaseB -= juce::MathConstants<float>::twoPi;
+            if (pocketPhaseC > juce::MathConstants<float>::twoPi) pocketPhaseC -= juce::MathConstants<float>::twoPi;
 
-            pocketOffsetDb = std::sin (pocketPhase) * 0.22f * std::min (1.0f, amountDb / 6.0f);
+            const float organicWave = 0.55f * std::sin (pocketPhaseA)
+                                    + 0.30f * std::sin (pocketPhaseB)
+                                    + 0.15f * std::sin (pocketPhaseC);
+            const float pocketScale = std::min (1.0f, maxRangeDb / 6.0f) * (0.75f + 0.25f * (1.0f - smTrackingMix));
+            pocketDb = organicWave * 0.24f * pocketScale;
         }
 
-        const float targetWithPocket = desiredGainDb + pocketOffsetDb;
-        const float prevGain = currentGainDb;
-        currentGainDb += effectiveCoeff * (targetWithPocket - currentGainDb);
-        faderVelocityDb = currentGainDb - prevGain;
+        const float totalGainDb = currentGainDb + pocketDb + smGainDb;
+        const float gainLinear = juce::Decibels::decibelsToGain (totalGainDb, -60.0f);
 
-        const float totalDb = currentGainDb + gainDb;
-        const float gainLinear = juce::Decibels::decibelsToGain (totalDb, -60.0f);
+        // 4. Etapa de Preamp con interacción dinámica al movimiento del fader y crossfade suave
+        const float baseDrive = (0.14f + 0.16f * (1.0f - smTrackingMix) + 0.18f * (smAmountDb / 12.0f))
+                              * profile.preampDriveScale * trackingDriveScale;
+        const float faderPushNorm = std::clamp ((currentGainDb + pocketDb) / 12.0f, -0.5f, 1.0f);
 
-        // El movimiento del fader empuja sutilmente el carácter del preamp
-        const float dynDrive = std::clamp (baseDrive + std::max (0.0f, faderVelocityDb * 12.0f) * 0.08f, 0.0f, 0.85f);
+        const float preL = preampInShelf.processSample (0, inL * gainLinear);
+        const float preR = preampInShelf.processSample (1, inR * gainLinear);
 
-        const float outL = applyPreampSample (inL * gainLinear, preampIdx, dynDrive, 0);
-        const float outR = applyPreampSample (inR * gainLinear, preampIdx, dynDrive, 1);
+        const float curP_L = applyPreampSample (preL, lastPreampIdx, baseDrive, faderPushNorm, 0);
+        const float curP_R = applyPreampSample (preR, lastPreampIdx, baseDrive, faderPushNorm, 1);
+
+        float mixL = curP_L;
+        float mixR = curP_R;
+        if (smPreampMix < 0.999f)
+        {
+            const float prevP_L = applyPreampSample (preL, prevPreampIdx, baseDrive, faderPushNorm, 0);
+            const float prevP_R = applyPreampSample (preR, prevPreampIdx, baseDrive, faderPushNorm, 1);
+            mixL = prevP_L + smPreampMix * (curP_L - prevP_L);
+            mixR = prevP_R + smPreampMix * (curP_R - prevP_R);
+        }
+
+        const float outL = preampOutShelf.processSample (0, mixL);
+        const float outR = preampOutShelf.processSample (1, mixR);
 
         left[i]  = outL;
         right[i] = outR;
